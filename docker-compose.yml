@@ -1,0 +1,87 @@
+version: '3'
+
+services:
+  haproxy:
+    image: haproxy:latest
+    container_name: haproxy
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - haproxy:/usr/local/etc/haproxy
+    networks:
+      - haproxy-tier
+  nginx-proxy:
+    build: ./nginx-proxy
+    container_name: nginx-proxy
+    restart: always
+    expose:
+      - 80
+      - 443
+    labels:
+      com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy: "true"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+      - vhost.d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - htpasswd:/etc/nginx/htpasswd
+    networks:
+      - haproxy-tier
+      - nginx-proxy-tier
+
+  letsencrypt-companion:
+    image: nginxproxy/acme-companion
+    restart: always
+    volumes:
+      - certs:/etc/nginx/certs
+      - acme:/etc/acme.sh
+      - vhost.d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - nginx-proxy-tier
+    depends_on:
+      - nginx-proxy
+
+# self signed
+#  omgwtfssl:
+#    image: paulczar/omgwtfssl
+#    restart: "no"
+#    volumes:
+#      - certs:/certs
+#    environment:
+#      - SSL_SUBJECT=servhostname.local
+#      - CA_SUBJECT=my@example.com
+#      - SSL_KEY=/certs/servhostname.local.key
+#      - SSL_CSR=/certs/servhostname.local.csr
+#      - SSL_CERT=/certs/servhostname.local.crt
+#    networks:
+#      - proxy-tier
+
+volumes:
+  certs:
+  acme:
+  html:
+  htpasswd:
+    driver_opts:
+      type: 'local'
+      o: 'bind'
+      device: ${HTPASSWD_EXTERNAL_DIR:?err}
+  vhost.d:
+    driver_opts:
+      type: 'local'
+      o: 'bind'
+      device: ${VHOST_D_EXTERNAL_DIR:?err}
+  haproxy:
+    driver_opts:
+      type: 'local'
+      o: 'bind'
+      device: ${HAPROXY_EXTERNAL_DIR:?err}
+
+networks:
+  nginx-proxy-tier:
+    external: true
+  haproxy-tier:
+    external: true
